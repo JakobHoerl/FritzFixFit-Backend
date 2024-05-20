@@ -3,6 +3,7 @@ const express = require("express");
 const mysql = require("mysql2");
 const bodyParser = require("body-parser");
 const cors = require("cors");
+const bcrypt = require("bcrypt");
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -34,7 +35,7 @@ app.post("/signup", (req, res) => {
   }
 
   const checkEmailQuery = "SELECT COUNT(*) AS count FROM users WHERE email = ?";
-  db.execute(checkEmailQuery, [email], (err, results) => {
+  db.execute(checkEmailQuery, [email], async (err, results) => {
     if (err) {
       console.error("Error checking email:", err);
       return res.status(500).send("Server error.");
@@ -45,23 +46,30 @@ app.post("/signup", (req, res) => {
       return res.status(400).send("Email already exists.");
     }
 
-    const insertQuery =
-      "INSERT INTO users (name, email, password) VALUES (?, ?, ?)";
-    db.execute(insertQuery, [name, email, password], (err, results) => {
-      if (err) {
-        console.error("Error inserting into the database:", err);
-        return res.status(500).send("Server error.");
-      }
-      res.status(201).send("User created successfully.");
-    });
+    try {
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      const insertQuery =
+        "INSERT INTO users (name, email, password) VALUES (?, ?, ?)";
+      db.execute(insertQuery, [name, email, hashedPassword], (err, results) => {
+        if (err) {
+          console.error("Error inserting into the database:", err);
+          return res.status(500).send("Server error.");
+        }
+        res.status(201).send("User created successfully.");
+      });
+    } catch (err) {
+      console.error("Error hashing password:", err);
+      return res.status(500).send("Server error.");
+    }
   });
 });
 
 app.post("/login", (req, res) => {
   const { email, password } = req.body;
 
-  const loginQuery = "SELECT * FROM users WHERE email = ? AND password = ?";
-  db.execute(loginQuery, [email, password], (err, results) => {
+  const loginQuery = "SELECT * FROM users WHERE email = ?";
+  db.execute(loginQuery, [email], async (err, results) => {
     if (err) {
       console.error("Error during login:", err);
       return res.status(500).send("Server error.");
@@ -71,7 +79,19 @@ app.post("/login", (req, res) => {
       return res.status(401).send("Invalid email or password.");
     }
 
-    res.status(200).json({ success: true, username: results[0].name });
+    const user = results[0];
+
+    try {
+      const passwordMatch = await bcrypt.compare(password, user.password);
+      if (!passwordMatch) {
+        return res.status(401).send("Invalid email or password.");
+      }
+
+      res.status(200).json({ success: true, username: user.name });
+    } catch (err) {
+      console.error("Error comparing passwords:", err);
+      return res.status(500).send("Server error.");
+    }
   });
 });
 
