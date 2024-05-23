@@ -27,7 +27,7 @@ db.connect((err) => {
   console.log("Connected to the MySQL database.");
 });
 
-app.post("/signup", (req, re) => {
+app.post("/signup", (req, res) => {
   const { name, email, password } = req.body;
 
   if (!name || !email || !password) {
